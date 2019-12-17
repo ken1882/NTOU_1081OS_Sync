@@ -1,3 +1,12 @@
+SPLIT_LINE  = '-' * 24 + 10.chr
+MSG_IDLE    = "\x00I\x00"
+MSG_ENDI    = "\x00\x00\x00" # End Of Input pipe IO message
+MSG_EXIT    = "\x00Q\x00"
+
+DataFileName = "data.dat"
+LockFileName = "sync.lock"
+ResultFileName = "data.json"
+
 # fix windows getrlimit not implement bug
 if Gem.win_platform?
   module Process
@@ -27,5 +36,16 @@ class Array
       st = ed; ed += partation;
       part
     end
+  end
+end
+
+require 'mechanize' unless defined?(Mechanize)
+class Mechanize::Page
+  def _dump(_)
+    Marshal.dump self.body.split(/[\r\n]+/).join('\n')
+  end
+
+  def self._load(args)
+    self.new(nil, nil, Marshal.load(*args), nil, ::Mechanize.new)
   end
 end

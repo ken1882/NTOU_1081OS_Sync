@@ -3,6 +3,11 @@ require_relative 'action'
 
 # Presentation Helpr
 module AgentHelper
+  StartWorkingMsg = "Getting %s"
+  RespondError    = "\nReceived response code %d, retrying...(depth=%d)"
+  TerminationMsg  = "#{SPLIT_LINE}Terminate singal received!"
+  ErrorMsg        = "An error occurred!"
+
   def on_fetch_fail(target, fallback)
     puts "Failed to get #{target}"
     return unless fallback
@@ -23,46 +28,31 @@ class Agent < Mechanize
     return on_fetch_fail(target, kwargs[:fallback]) if kwargs[:depth] >= 5
     kwargs[:depth] += 1
     begin
-      eval_action("Getting #{target}") do
+      eval_action(sprintf(StartWorkingMsg, target)) do
         _doc = self.get(target)
       end
     rescue Mechanize::ResponseCodeError => err
-      warning("\nReceived response code #{err.response_code}, retrying...(depth=#{kwargs[:depth]})")
+      warning(sprintf(RespondError, err.response_code, kwargs[:depth]))
       sleep(0.3)
       fetch(target, **kwargs, &block)
     rescue SystemExit, Interrupt => err
-      puts "#{SPLIT_LINE}Terminate singal received!"
+      puts TerminationMsg
       raise err
     rescue Exception => err
-      puts "Error!"
+      puts ErrorMsg
       raise err
     end
     @current_doc = _doc if kwargs[:set]
     return _doc
   end
 end
-
 # Main producer
 class Producer < Agent
-  BaseLocation  = "https://www.etax.nat.gov.tw/etw-main/web/ETW183W1/"
-
   def self.start(targets)
-    agent = self.new
+    worker = self.new
     targets.each do |target|
+      item = Marshal.dump(worker.fetch(target))
+      $mutex.synchronize{$buffer << item}
     end
   end
-
-  def fetch(target=BaseLocation, *args, **kwargs, &block)
-    args.unshift(target)
-    super(*args, **kwargs, &block)
-  end
-
-end
-
-# Launched as a subprocess
-if (Integer(ARGV[0]) rescue nil)
-  STDOUT.sync = true  # no IO buffering
-  $parent_pid = ARGV[0].to_i
-  Producer.start(eval(ARGV[1]))
-  exit 0
 end
