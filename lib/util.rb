@@ -1,7 +1,7 @@
 SPLIT_LINE  = '-' * 24 + 10.chr
-MSG_IDLE    = "\x00I\x00"
-MSG_ENDI    = "\x00\x00\x00" # End Of Input pipe IO message
-MSG_EXIT    = "\x00Q\x00"
+MSG_IDLE    = "\x00I\x00"        # Sub-process idle message
+MSG_ENDI    = "\x00\x00\x00"     # End Of Input pipe IO message
+MSG_EXIT    = "\x00Q\x00"        # Sub-process exit message
 
 DataFileName = "data.dat"
 LockFileName = "sync.lock"
@@ -16,6 +16,7 @@ if Gem.win_platform?
 end
 
 class Array
+  # Equally divide elements to n partitions 
   def equally_divide(n)
     raise ArgumentError, "`n` cannot <= 0" if n <= 0
     len = self.size
@@ -39,10 +40,11 @@ class Array
   end
 end
 
+# Define serialize methods in order to send in IO pipes
 require 'mechanize' unless defined?(Mechanize)
 class Mechanize::Page
   def _dump(_)
-    Marshal.dump self.body.split(/[\r\n]+/).join('\n')
+    Marshal.dump self.body.tr("\r",'')
   end
 
   def self._load(args)

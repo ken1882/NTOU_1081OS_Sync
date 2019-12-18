@@ -3,9 +3,8 @@ require_relative 'lib/util'
 require_relative 'lib/producer'
 require_relative 'lib/consumer'
 
-
 WorkerCnt   = 3
-ConsumerCnt = 3
+ConsumerCnt = 3             
 SIGKILL     = 9
 FlagTerminated = 0x80000000   # -2147483648
 BufferReadSize = 1024         # How many bytes read from IO
@@ -20,14 +19,20 @@ $producers   = []          # producer threads
 $consumers   = []          # consumer sub-processes
 $buffer      = []          # item buffer
 $mutex       = Mutex.new   # mutual exclusion lock
-$flag_stop   = false
-$silent      = false
+$flag_stop   = false       # program stop flag
+$silent      = false       # output slience flag
 
 def start_producer
+  # Get root page that contains data to fetch
   base_doc = Agent.new.fetch(BaseLocation)
+
+  # Get target links
   targets = base_doc.links.collect{|l| l.uri.to_s if l.to_s.include?("冊")}.compact
+
+  # Relative to absolute path
   targets.collect!{|uri| base_doc.uri.merge(uri).to_s}
-  puts targets.size
+
+  # Equally divide targets to worker to fetch data
   targets.equally_divide(WorkerCnt).collect do |group|
     Thread.new{
       begin
@@ -39,12 +44,14 @@ def start_producer
   end
 end
 
+# Start sub-process with communication IO pipe
 def start_consumer
   ConsumerCnt.times.collect do
     IO.popen("ruby lib/consumer.rb #{__id__}", 'wb+')
   end
 end
 
+# Define singletion methods for easier operation
 def define_consumer_singletons
   $consumers.each do |_proc|
     class << _proc
@@ -59,10 +66,12 @@ def define_consumer_singletons
   end
 end
 
+# Send data to sub-process pipe
 def send_data(pipe, data)
   pipe.write(data, "\n#{MSG_ENDI}\n")
 end
 
+# Dispatch newly generate item to sub-process (consumer)
 def dispatch_work
   $consumers.each do |pipe|
     next unless pipe.idle? || pipe.dead?
@@ -74,6 +83,7 @@ def dispatch_work
   end
 end
 
+# Read sub-process message
 def read_pipe(pipe)
   begin
     return pipe.read_nonblock(BufferReadSize)
@@ -85,6 +95,7 @@ def read_pipe(pipe)
   end
 end
 
+# Update pipe status
 def update_pipes
   $consumers.each do |pipe|
     line = read_pipe(pipe) || ''
@@ -98,12 +109,14 @@ def update_pipes
   dispatch_work
 end
 
+# Wheather works are all done
 def all_done?
   return false if $producers.any?{|_thr|  _thr.alive?}
   return false if $consumers.any?{|_proc| _proc.busy?}
   return true
 end
 
+# Sub-process status watcher
 def start_proc_monitor
   Thread.new{
     loop do
@@ -120,6 +133,7 @@ def start_proc_monitor
   }
 end
 
+# Program main loop
 def main_loop
   update_pipes
   $flag_stop = all_done?
@@ -134,6 +148,7 @@ def start
   main_loop until $flag_stop
 end
 
+# Finialize data and send exit message to sub-processes
 def post_terminte
   $consumers.each{|pipe| pipe.puts MSG_EXIT}
   File.open(DataFileName, 'rb') do |rfile|
@@ -143,8 +158,8 @@ def post_terminte
   end
 end
 
+# Kill all remaining stuff
 def terminate
-  # Prevent zombie process
   $consumers.each{|_proc| Process.kill(SIGKILL, _proc.pid) rescue nil}
   $producers.each{|_thr| Thread.kill(_thr) rescue nil}
   File.delete(LockFileName) rescue nil
@@ -152,8 +167,8 @@ end
 
 begin
   start
-  post_terminte
 ensure
+  post_terminte
   sleep(1) # gently wait for process terminate themselves
   terminate
 end

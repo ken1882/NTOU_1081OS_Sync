@@ -1,31 +1,44 @@
 require 'mechanize'
 require_relative 'action'
-
-# Presentation Helpr
+#================================================================
+# * Agent Helper
+#----------------------------------------------------------------
+#   This module defined presentation constants and methods for
+# Agent (crawler) class.
+#================================================================
 module AgentHelper
+  #----------------------------------------------------------------
+  # * Constants for mix-ins
+  #----------------------------------------------------------------
   StartWorkingMsg = "Getting %s"
   RespondError    = "\nReceived response code %d, retrying...(depth=%d)"
   TerminationMsg  = "#{SPLIT_LINE}Terminate singal received!"
   ErrorMsg        = "An error occurred!"
-
+  #----------------------------------------------------------------
+  # * Operations after failed to get page
+  #----------------------------------------------------------------
   def on_fetch_fail(target, fallback)
     puts "Failed to get #{target}"
     return unless fallback
     fallback.call
   end
 end
-
-# Base crawler
+#================================================================
+# * Agent: Extended crawler class from mechanize
+#================================================================
 class Agent < Mechanize
   include AgentHelper
+  RetryDepth = 5
 
   attr_reader :current_doc
-
+  #----------------------------------------------------------------
+  # * Get target page with retries utility
+  #----------------------------------------------------------------
   def fetch(*args, **kwargs, &block)
     target = args[0]
     _doc   = nil
     kwargs[:depth] ||= 0
-    return on_fetch_fail(target, kwargs[:fallback]) if kwargs[:depth] >= 5
+    return on_fetch_fail(target, kwargs[:fallback]) if kwargs[:depth] >= RetryDepth
     kwargs[:depth] += 1
     begin
       eval_action(sprintf(StartWorkingMsg, target)) do
@@ -46,7 +59,9 @@ class Agent < Mechanize
     return _doc
   end
 end
-# Main producer
+#================================================================
+# * Main producer class
+#================================================================
 class Producer < Agent
   def self.start(targets)
     worker = self.new
